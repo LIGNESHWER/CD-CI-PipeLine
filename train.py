@@ -17,6 +17,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
+from skl2onnx import to_onnx
+
 DATA = Path("data/drug200.csv")
 MODEL_DIR = Path("model")
 RESULTS_DIR = Path("results")
@@ -72,3 +74,18 @@ plt.close()
 print(f"Accuracy: {accuracy:.4f}")
 print(f"Weighted F1-score: {f1:.4f}")
 print("Training and evaluation completed.")
+
+# Export the fitted pipeline to ONNX.
+# Use a representative sample with the original input columns.
+sample = X_train.iloc[:1]
+
+onnx_model = to_onnx(
+    pipeline,
+    sample,
+    target_opset=17,
+)
+
+with open(MODEL_DIR / "drug_model.onnx", "wb") as f:
+    f.write(onnx_model.SerializeToString())
+
+print("ONNX model exported successfully.")

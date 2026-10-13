@@ -23,11 +23,25 @@
 pandas
 scikit-learn
 joblib
-huggingface_hub==0.28.1
-filelock==3.11.0
 </gradio-requirements>
 
 <gradio-file name="app.py" entrypoint>
+import os
+
+# Gradio-Lite bootstraps its own huggingface_hub/filelock stack before this
+# file's <gradio-requirements> pins are applied, so recent filelock releases
+# (which probe os.link with follow_symlinks=) still end up installed here.
+# Pyodide's os.link shim doesn't accept that keyword, so strip it before
+# gradio (and its filelock dependency) is imported.
+_pyodide_link = os.link
+
+
+def _link_without_follow_symlinks(source, destination, **kwargs):
+    return _pyodide_link(source, destination)
+
+
+os.link = _link_without_follow_symlinks
+
 import gradio as gr
 import pandas as pd
 import joblib

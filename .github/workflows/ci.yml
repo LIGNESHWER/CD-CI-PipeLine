@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
   pull-requests: write
 
 jobs:
@@ -37,8 +38,6 @@ jobs:
         run: make train
 
       - name: Generate evaluation report
-        env:
-          REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           {
             echo "# Model Evaluation"
@@ -50,7 +49,11 @@ jobs:
             echo "![Confusion Matrix](./results/confusion_matrix.png)"
           } > report.md
 
-          cml comment create report.md
+      - name: Comment evaluation report
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: cml comment create report.md
 
       - name: Deploy to Hugging Face Static Space
         if: github.event_name != 'pull_request'

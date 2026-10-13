@@ -7,138 +7,199 @@
 
   <title>Drug Classification - ML CI/CD</title>
 
-  <script type="module"
-    src="https://cdn.jsdelivr.net/npm/@gradio/lite@5.32.0/dist/lite.js">
-  </script>
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
 
-  <link rel="stylesheet"
-    href="https://cdn.jsdelivr.net/npm/@gradio/lite@5.32.0/dist/lite.css">
+  <style>
+    :root {
+      color-scheme: light dark;
+      --accent: #2563eb;
+      --border: #d4d4d8;
+      --bg: #ffffff;
+      --fg: #18181b;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --border: #3f3f46;
+        --bg: #18181b;
+        --fg: #fafafa;
+      }
+    }
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 640px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+      background: var(--bg);
+      color: var(--fg);
+    }
+    h1 { font-size: 1.5rem; }
+    p.description { color: #71717a; margin-top: -0.5rem; }
+    form {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+    label {
+      display: flex;
+      flex-direction: column;
+      font-size: 0.9rem;
+      gap: 0.25rem;
+    }
+    input, select {
+      padding: 0.5rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--fg);
+      font-size: 1rem;
+    }
+    button {
+      grid-column: 1 / -1;
+      padding: 0.6rem;
+      border: none;
+      border-radius: 6px;
+      background: var(--accent);
+      color: white;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.6; cursor: wait; }
+    .result {
+      grid-column: 1 / -1;
+      margin-top: 0.5rem;
+      padding: 1rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      display: none;
+    }
+    .result strong { font-size: 1.2rem; }
+    .status { grid-column: 1 / -1; font-size: 0.9rem; color: #71717a; }
+  </style>
 </head>
 
 <body>
 
-<gradio-lite>
+<h1>Drug Classification</h1>
+<p class="description">
+  Educational ML demonstration using a trained Scikit-learn pipeline,
+  running fully client-side via ONNX Runtime Web.
+</p>
 
-<gradio-requirements>
-pandas
-scikit-learn
-joblib
-</gradio-requirements>
+<form id="predict-form">
+  <label>
+    Age
+    <input type="number" id="age" value="30" min="0" required>
+  </label>
 
-<gradio-file name="app.py" entrypoint>
-import os
+  <label>
+    Sex
+    <select id="sex">
+      <option value="F">F</option>
+      <option value="M">M</option>
+    </select>
+  </label>
 
-# Gradio-Lite bootstraps its own huggingface_hub/filelock stack before this
-# file's <gradio-requirements> pins are applied, so recent filelock releases
-# (which probe os.link with follow_symlinks=) still end up installed here.
-# Pyodide's os.link shim doesn't accept that keyword, so strip it before
-# gradio (and its filelock dependency) is imported.
-_pyodide_link = os.link
+  <label>
+    Blood Pressure Category
+    <select id="bp">
+      <option value="LOW">LOW</option>
+      <option value="NORMAL" selected>NORMAL</option>
+      <option value="HIGH">HIGH</option>
+    </select>
+  </label>
 
+  <label>
+    Cholesterol Category
+    <select id="cholesterol">
+      <option value="NORMAL" selected>NORMAL</option>
+      <option value="HIGH">HIGH</option>
+    </select>
+  </label>
 
-def _link_without_follow_symlinks(source, destination, **kwargs):
-    return _pyodide_link(source, destination)
+  <label>
+    Na_to_K Ratio
+    <input type="number" id="na_to_k" value="15.0" step="0.1" min="0" required>
+  </label>
 
+  <span class="status" id="status">Loading model...</span>
 
-os.link = _link_without_follow_symlinks
+  <button type="submit" id="submit-btn" disabled>Predict</button>
 
-import gradio as gr
-import pandas as pd
-import joblib
-from pyodide.http import pyfetch
+  <div class="result" id="result">
+    <div>Predicted Class: <strong id="predicted-class"></strong></div>
+    <div>Model Confidence: <strong id="confidence"></strong></div>
+  </div>
+</form>
 
-# Replace with your actual Hugging Face username.
-MODEL_URL = (
-    "https://huggingface.co/spaces/"
-    "KumarC2006/Drug-Classification/"
-    "resolve/main/model/drug_model.joblib"
-)
+<script>
+  const MODEL_URL = "model/drug_model.onnx";
 
-# Download the model into the browser's Python filesystem.
-response = await pyfetch(MODEL_URL)
+  const statusEl = document.getElementById("status");
+  const submitBtn = document.getElementById("submit-btn");
+  const resultEl = document.getElementById("result");
+  const predictedClassEl = document.getElementById("predicted-class");
+  const confidenceEl = document.getElementById("confidence");
 
-if response.status != 200:
-    raise RuntimeError(
-        f"Model download failed: HTTP {response.status}"
-    )
+  let session = null;
 
-model_bytes = await response.bytes()
+  async function loadModel() {
+    try {
+      session = await ort.InferenceSession.create(MODEL_URL);
+      statusEl.textContent = "Model loaded.";
+      submitBtn.disabled = false;
+    } catch (err) {
+      statusEl.textContent = "Failed to load model: " + err.message;
+      console.error(err);
+    }
+  }
 
-with open("/drug_model.joblib", "wb") as model_file:
-    model_file.write(model_bytes)
+  async function predict(event) {
+    event.preventDefault();
 
-# Load the trained preprocessing + classification pipeline.
-model = joblib.load("/drug_model.joblib")
+    const age = Number(document.getElementById("age").value);
+    const sex = document.getElementById("sex").value;
+    const bp = document.getElementById("bp").value;
+    const cholesterol = document.getElementById("cholesterol").value;
+    const naToK = Number(document.getElementById("na_to_k").value);
 
+    if (Number.isNaN(age) || Number.isNaN(naToK) || age < 0 || naToK < 0) {
+      statusEl.textContent = "Enter valid, non-negative numerical values.";
+      return;
+    }
 
-def predict_drug(age, sex, bp, cholesterol, na_to_k):
-    if age is None or na_to_k is None:
-        return "Enter all required numerical values.", ""
+    submitBtn.disabled = true;
+    statusEl.textContent = "Predicting...";
 
-    if age < 0 or na_to_k < 0:
-        return "Values must be non-negative.", ""
+    try {
+      const feeds = {
+        Age: new ort.Tensor("int64", BigInt64Array.from([BigInt(Math.round(age))]), [1, 1]),
+        Sex: new ort.Tensor("string", [sex], [1, 1]),
+        BP: new ort.Tensor("string", [bp], [1, 1]),
+        Cholesterol: new ort.Tensor("string", [cholesterol], [1, 1]),
+        Na_to_K: new ort.Tensor("float64", Float64Array.from([naToK]), [1, 1]),
+      };
 
-    # The column names and categorical values must match
-    # those used during model training.
-    sample = pd.DataFrame([{
-        "Age": age,
-        "Sex": sex,
-        "BP": bp,
-        "Cholesterol": cholesterol,
-        "Na_to_K": na_to_k
-    }])
+      const output = await session.run(feeds);
+      const label = output.label.data[0];
+      const probabilities = output.probabilities.data;
+      const maxProb = Math.max(...probabilities);
 
-    prediction = model.predict(sample)[0]
+      predictedClassEl.textContent = label;
+      confidenceEl.textContent = (maxProb * 100).toFixed(2) + "%";
+      resultEl.style.display = "block";
+      statusEl.textContent = "";
+    } catch (err) {
+      statusEl.textContent = "Prediction failed: " + err.message;
+      console.error(err);
+    } finally {
+      submitBtn.disabled = false;
+    }
+  }
 
-    confidence = ""
-    if hasattr(model, "predict_proba"):
-        probabilities = model.predict_proba(sample)[0]
-        confidence = (
-            f"{max(probabilities) * 100:.2f}%"
-        )
-
-    return str(prediction), confidence
-
-
-demo = gr.Interface(
-    fn=predict_drug,
-    inputs=[
-        gr.Number(label="Age", value=30),
-        gr.Dropdown(
-            choices=["F", "M"],
-            value="F",
-            label="Sex"
-        ),
-        gr.Dropdown(
-            choices=["LOW", "NORMAL", "HIGH"],
-            value="NORMAL",
-            label="Blood Pressure Category"
-        ),
-        gr.Dropdown(
-            choices=["NORMAL", "HIGH"],
-            value="NORMAL",
-            label="Cholesterol Category"
-        ),
-        gr.Number(
-            label="Na_to_K Ratio",
-            value=15.0
-        )
-    ],
-    outputs=[
-        gr.Textbox(label="Predicted Class"),
-        gr.Textbox(label="Model Confidence")
-    ],
-    title="Drug Classification",
-    description=(
-        "Educational ML demonstration using a "
-        "trained Scikit-learn pipeline."
-    )
-)
-
-demo.launch()
-</gradio-file>
-
-</gradio-lite>
+  document.getElementById("predict-form").addEventListener("submit", predict);
+  loadModel();
+</script>
 
 </body>
 </html>

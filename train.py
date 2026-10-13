@@ -83,6 +83,7 @@ onnx_model = to_onnx(
     pipeline,
     sample,
     target_opset=17,
+    options={id(pipeline): {"zipmap": False}},
 )
 
 with open(MODEL_DIR / "drug_model.onnx", "wb") as f:

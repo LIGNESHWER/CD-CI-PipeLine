@@ -55,7 +55,7 @@ jobs:
           REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: cml comment create report.md
 
-      - name: Deploy to Hugging Face Gradio Space
+      - name: Deploy to Hugging Face Static Space
         if: github.event_name != 'pull_request'
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}

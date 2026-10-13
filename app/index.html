@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0">
+
+  <title>Drug Classification - ML CI/CD</title>
+
+  <script type="module"
+    src="https://cdn.jsdelivr.net/npm/@gradio/lite@5.32.0/dist/lite.js">
+  </script>
+
+  <link rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/@gradio/lite@5.32.0/dist/lite.css">
+</head>
+
+<body>
+
+<gradio-lite>
+
+<gradio-requirements>
+pandas
+scikit-learn
+joblib
+</gradio-requirements>
+
+<gradio-file name="app.py" entrypoint>
+import gradio as gr
+import pandas as pd
+import joblib
+from pyodide.http import pyfetch
+
+# Replace with your actual Hugging Face username.
+MODEL_URL = (
+    "https://huggingface.co/spaces/"
+    "KumarC2006/Drug-Classification/"
+    "resolve/main/model/drug_model.joblib"
+)
+
+# Download the model into the browser's Python filesystem.
+response = await pyfetch(MODEL_URL)
+
+if response.status != 200:
+    raise RuntimeError(
+        f"Model download failed: HTTP {response.status}"
+    )
+
+model_bytes = await response.bytes()
+
+with open("/drug_model.joblib", "wb") as model_file:
+    model_file.write(model_bytes)
+
+# Load the trained preprocessing + classification pipeline.
+model = joblib.load("/drug_model.joblib")
+
+
+def predict_drug(age, sex, bp, cholesterol, na_to_k):
+    if age is None or na_to_k is None:
+        return "Enter all required numerical values.", ""
+
+    if age < 0 or na_to_k < 0:
+        return "Values must be non-negative.", ""
+
+    # The column names and categorical values must match
+    # those used during model training.
+    sample = pd.DataFrame([{
+        "Age": age,
+        "Sex": sex,
+        "BP": bp,
+        "Cholesterol": cholesterol,
+        "Na_to_K": na_to_k
+    }])
+
+    prediction = model.predict(sample)[0]
+
+    confidence = ""
+    if hasattr(model, "predict_proba"):
+        probabilities = model.predict_proba(sample)[0]
+        confidence = (
+            f"{max(probabilities) * 100:.2f}%"
+        )
+
+    return str(prediction), confidence
+
+
+demo = gr.Interface(
+    fn=predict_drug,
+    inputs=[
+        gr.Number(label="Age", value=30),
+        gr.Dropdown(
+            choices=["F", "M"],
+            value="F",
+            label="Sex"
+        ),
+        gr.Dropdown(
+            choices=["LOW", "NORMAL", "HIGH"],
+            value="NORMAL",
+            label="Blood Pressure Category"
+        ),
+        gr.Dropdown(
+            choices=["NORMAL", "HIGH"],
+            value="NORMAL",
+            label="Cholesterol Category"
+        ),
+        gr.Number(
+            label="Na_to_K Ratio",
+            value=15.0
+        )
+    ],
+    outputs=[
+        gr.Textbox(label="Predicted Class"),
+        gr.Textbox(label="Model Confidence")
+    ],
+    title="Drug Classification",
+    description=(
+        "Educational ML demonstration using a "
+        "trained Scikit-learn pipeline."
+    )
+)
+
+demo.launch()
+</gradio-file>
+
+</gradio-lite>
+
+</body>
+</html>

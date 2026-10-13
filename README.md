@@ -3,12 +3,9 @@ title: ML CI/CD Demonstration
 emoji: 💊
 colorFrom: blue
 colorTo: green
-sdk: gradio
-sdk_version: "5.32.0"
-python_version: "3.11"
-app_file: app.py
+sdk: static
+app_file: index.html
 pinned: false
 ---
 
-This Space hosts a Gradio drug classification application backed by the trained
-scikit-learn model.
+This Space hosts the static Gradio-Lite drug classification demonstration.

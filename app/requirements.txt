@@ -1,4 +1,0 @@
-gradio==5.32.0
-joblib
-pandas
-scikit-learn

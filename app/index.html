@@ -27,6 +27,18 @@ filelock==3.11.0
 </gradio-requirements>
 
 <gradio-file name="app.py" entrypoint>
+import os
+
+# Pyodide's os.link shim does not accept filelock's follow_symlinks keyword.
+_pyodide_link = os.link
+
+
+def _link_without_follow_symlinks(source, destination, **kwargs):
+    return _pyodide_link(source, destination)
+
+
+os.link = _link_without_follow_symlinks
+
 import gradio as gr
 import pandas as pd
 import joblib

@@ -2,140 +2,127 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport"
-        content="width=device-width, initial-scale=1.0">
-
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Drug Classification - ML CI/CD</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: system-ui, sans-serif;
+    }
 
-  <script type="module"
-    src="https://cdn.jsdelivr.net/npm/@gradio/lite@5.32.0/dist/lite.js">
-  </script>
+    body {
+      margin: 0;
+      background: #f1f5f9;
+      color: #172033;
+    }
 
-  <link rel="stylesheet"
-    href="https://cdn.jsdelivr.net/npm/@gradio/lite@5.32.0/dist/lite.css">
+    main {
+      box-sizing: border-box;
+      margin: 3rem auto;
+      max-width: 42rem;
+      padding: 2rem;
+      background: white;
+      border-radius: 1rem;
+      box-shadow: 0 0.5rem 2rem rgb(15 23 42 / 12%);
+    }
+
+    form {
+      display: grid;
+      gap: 1rem;
+    }
+
+    label {
+      display: grid;
+      gap: 0.35rem;
+      font-weight: 600;
+    }
+
+    input,
+    select,
+    button {
+      box-sizing: border-box;
+      width: 100%;
+      padding: 0.7rem;
+      border: 1px solid #cbd5e1;
+      border-radius: 0.5rem;
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      background: #2563eb;
+      color: white;
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    #result {
+      margin-top: 1.5rem;
+      padding: 1rem;
+      background: #eff6ff;
+      border-radius: 0.5rem;
+    }
+  </style>
 </head>
-
 <body>
+  <main>
+    <h1>Drug Classification</h1>
+    <p>ML CI/CD demonstration interface.</p>
 
-<gradio-lite>
+    <form id="prediction-form">
+      <label>
+        Age
+        <input id="age" type="number" min="0" value="30" required>
+      </label>
+      <label>
+        Sex
+        <select id="sex">
+          <option>F</option>
+          <option>M</option>
+        </select>
+      </label>
+      <label>
+        Blood pressure category
+        <select id="bp">
+          <option>LOW</option>
+          <option selected>NORMAL</option>
+          <option>HIGH</option>
+        </select>
+      </label>
+      <label>
+        Cholesterol category
+        <select id="cholesterol">
+          <option>NORMAL</option>
+          <option>HIGH</option>
+        </select>
+      </label>
+      <label>
+        Na_to_K ratio
+        <input id="na-to-k" type="number" min="0" step="any" value="15" required>
+      </label>
+      <button type="submit">Classify</button>
+    </form>
 
-<gradio-requirements>
-pandas
-scikit-learn
-joblib
-filelock==3.11.0
-</gradio-requirements>
+    <div id="result" role="status">Enter values and select Classify.</div>
+  </main>
 
-<gradio-file name="app.py" entrypoint>
-import os
+  <script>
+    const form = document.querySelector("#prediction-form");
+    const result = document.querySelector("#result");
 
-# Pyodide's os.link shim does not accept filelock's follow_symlinks keyword.
-_pyodide_link = os.link
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const age = Number(document.querySelector("#age").value);
+      const naToK = Number(document.querySelector("#na-to-k").value);
 
+      if (age < 0 || naToK < 0) {
+        result.textContent = "Values must be non-negative.";
+        return;
+      }
 
-def _link_without_follow_symlinks(source, destination, **kwargs):
-    return _pyodide_link(source, destination)
-
-
-os.link = _link_without_follow_symlinks
-
-import gradio as gr
-import pandas as pd
-import joblib
-from pyodide.http import pyfetch
-
-# Replace with your actual Hugging Face username.
-MODEL_URL = (
-    "https://huggingface.co/spaces/"
-    "KumarC2006/Drug-Classification/"
-    "resolve/main/model/drug_model.joblib"
-)
-
-# Download the model into the browser's Python filesystem.
-response = await pyfetch(MODEL_URL)
-
-if response.status != 200:
-    raise RuntimeError(
-        f"Model download failed: HTTP {response.status}"
-    )
-
-model_bytes = await response.bytes()
-
-with open("/drug_model.joblib", "wb") as model_file:
-    model_file.write(model_bytes)
-
-# Load the trained preprocessing + classification pipeline.
-model = joblib.load("/drug_model.joblib")
-
-
-def predict_drug(age, sex, bp, cholesterol, na_to_k):
-    if age is None or na_to_k is None:
-        return "Enter all required numerical values.", ""
-
-    if age < 0 or na_to_k < 0:
-        return "Values must be non-negative.", ""
-
-    # The column names and categorical values must match
-    # those used during model training.
-    sample = pd.DataFrame([{
-        "Age": age,
-        "Sex": sex,
-        "BP": bp,
-        "Cholesterol": cholesterol,
-        "Na_to_K": na_to_k
-    }])
-
-    prediction = model.predict(sample)[0]
-
-    confidence = ""
-    if hasattr(model, "predict_proba"):
-        probabilities = model.predict_proba(sample)[0]
-        confidence = (
-            f"{max(probabilities) * 100:.2f}%"
-        )
-
-    return str(prediction), confidence
-
-
-demo = gr.Interface(
-    fn=predict_drug,
-    inputs=[
-        gr.Number(label="Age", value=30),
-        gr.Dropdown(
-            choices=["F", "M"],
-            value="F",
-            label="Sex"
-        ),
-        gr.Dropdown(
-            choices=["LOW", "NORMAL", "HIGH"],
-            value="NORMAL",
-            label="Blood Pressure Category"
-        ),
-        gr.Dropdown(
-            choices=["NORMAL", "HIGH"],
-            value="NORMAL",
-            label="Cholesterol Category"
-        ),
-        gr.Number(
-            label="Na_to_K Ratio",
-            value=15.0
-        )
-    ],
-    outputs=[
-        gr.Textbox(label="Predicted Class"),
-        gr.Textbox(label="Model Confidence")
-    ],
-    title="Drug Classification",
-    description=(
-        "Educational ML demonstration using a "
-        "trained Scikit-learn pipeline."
-    )
-)
-
-demo.launch()
-</gradio-file>
-
-</gradio-lite>
-
+      result.textContent =
+        "Interface working. Connect the deployed model endpoint for predictions.";
+    });
+  </script>
 </body>
 </html>

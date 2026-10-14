@@ -61,6 +61,16 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_SPACE_ID: ${{ secrets.HF_SPACE_ID }}
         run: |
+          if [[ -z "${HF_TOKEN:-}" ]]; then
+            echo "::error::The HF_TOKEN repository secret is not configured."
+            exit 1
+          fi
+
+          if [[ -z "${HF_SPACE_ID:-}" ]]; then
+            echo "::error::The HF_SPACE_ID repository secret is not configured."
+            exit 1
+          fi
+
           python -m pip install --upgrade huggingface_hub
 
           hf auth login --token "$HF_TOKEN"
@@ -73,9 +83,9 @@ jobs:
             exit 1
           fi
 
-          hf upload "$SPACE_ID" app/ . \
+          hf upload "$SPACE_ID" . app/ \
             --repo-type space \
-            --commit-message "Deploy Gradio-Lite application"
+            --commit-message "Deploy static application"
 
           hf upload "$SPACE_ID" model/ model \
             --repo-type space \
